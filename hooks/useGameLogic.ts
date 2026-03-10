@@ -83,6 +83,8 @@ export const useGameLogic = () => {
   const [loadingStep, setLoadingStep] = useState('');
   const [isSavingStatus, setIsSaving] = useState(false);
   const [lastAction, setLastAction] = useState<{ command: string, timeCost?: number } | null>(null);
+  const [lastPlayerState, setLastPlayerState] = useState<Player | null>(null);
+  const [lastGameTime, setLastGameTime] = useState<GameTime | null>(null);
   
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('matrix_settings');
@@ -280,10 +282,30 @@ export const useGameLogic = () => {
     return `Ngày ${d}/${m}/${y} | ${h}:${min}`;
   }, []);
 
-  const handleCommand = useCallback(async (command: string, timeCost?: number) => {
+  const handleCommand = useCallback(async (command: string, timeCost?: number, isRetry: boolean = false) => {
     if (!command.trim() || isLoading || !selectedWorld) return;
     
     let currentLogs = [...logs];
+
+    if (isRetry && lastPlayerState && lastGameTime) {
+      // Clean logs for retry
+      if (currentLogs.length > 0 && currentLogs[currentLogs.length - 1].type === 'error') {
+        currentLogs = currentLogs.slice(0, -1);
+      }
+      if (currentLogs.length > 0 && currentLogs[currentLogs.length - 1].type === 'narrator') {
+        currentLogs = currentLogs.slice(0, -1);
+        if (currentLogs.length > 0 && currentLogs[currentLogs.length - 1].type === 'player') {
+          currentLogs = currentLogs.slice(0, -1);
+        }
+      }
+    } else {
+      // Save checkpoint for non-retry
+      setLastPlayerState(JSON.parse(JSON.stringify(player)));
+      setLastGameTime({ ...gameTime });
+    }
+
+    const currentPlayerState = (isRetry && lastPlayerState) ? lastPlayerState : player;
+    const currentGameTime = (isRetry && lastGameTime) ? lastGameTime : gameTime;
     
     const playerLog: GameLog = { content: command, type: 'player', timestamp: Date.now() };
     currentLogs.push(playerLog);
@@ -292,7 +314,9 @@ export const useGameLogic = () => {
     
     // Lưu ngay lập tức để bảo toàn trạng thái nếu AI gặp lỗi hoặc người dùng F5
     triggerAutoSave({ 
-      logs: currentLogs, 
+      logs: currentLogs,
+      player: currentPlayerState,
+      gameTime: currentGameTime
     });
     
     setIsLoading(true);
@@ -314,11 +338,11 @@ export const useGameLogic = () => {
       setLoadingProgress(50);
       setLoadingStep('Kết nối Ma Trận AI...');
       
-      const timeStr = gameTime.year === 0 ? "Ngày ??/??/???? | ??:??" : formatGameTime(gameTime);
+      const timeStr = currentGameTime.year === 0 ? "Ngày ??/??/???? | ??:??" : formatGameTime(currentGameTime);
       const update = await gameAI.getResponse(
         command, 
         history, 
-        player, 
+        currentPlayerState, 
         selectedWorld.genre, 
         selectedWorld.id.startsWith('fanfic_'),
         selectedWorld.systemInstruction, 
@@ -334,7 +358,7 @@ export const useGameLogic = () => {
       const duration = ((endTime - startTime) / 1000).toFixed(2);
       
       // Luôn tăng lượt chơi khi AI phản hồi thành công, bất kể là tải lại hay lượt mới
-      let updatedPlayer = { ...player, turnCount: player.turnCount + 1 };
+      let updatedPlayer = { ...currentPlayerState, turnCount: currentPlayerState.turnCount + 1 };
       
       // Update token usage
       const latestTokens = update.tokenUsage || 0;
@@ -469,7 +493,7 @@ export const useGameLogic = () => {
       }
 
       // AI-driven time progression (Strictly AI-controlled)
-      const nextTime = update.newTime || gameTime;
+      const nextTime = update.newTime || currentGameTime;
       if (update.newTime) {
         setGameTime(update.newTime);
       }
@@ -680,7 +704,11 @@ export const useGameLogic = () => {
           metadata: { usedKeyIndex: coreIndex }
         } as GameLog];
         // Save error state so user can refresh and still see the error and retry
-        triggerAutoSave({ logs: newLogs });
+        triggerAutoSave({ 
+          logs: newLogs,
+          player: currentPlayerState,
+          gameTime: currentGameTime
+        });
         return newLogs;
       });
     } finally { 
@@ -688,7 +716,7 @@ export const useGameLogic = () => {
       setLoadingProgress(0);
       setLoadingStep('');
     }
-  }, [logs, isLoading, selectedWorld, player, gameTime, formatGameTime, triggerAutoSave, settings]);
+  }, [logs, isLoading, selectedWorld, player, gameTime, formatGameTime, triggerAutoSave, settings, lastPlayerState, lastGameTime]);
 
   const handleRegenerateImage = useCallback(async (logIndex: number) => {
     if (isLoading || !selectedWorld) return;
@@ -1444,23 +1472,7 @@ YÊU CẦU TỐI CAO: AI phải tôn trọng TUYỆT ĐỐI và 100% dữ liệu
 
   const handleRetry = useCallback(async () => {
     if (lastAction && !isLoading) {
-      setLogs(prev => {
-        let newLogs = [...prev];
-        // If the last log is an error, remove it
-        if (newLogs.length > 0 && newLogs[newLogs.length - 1].type === 'error') {
-          newLogs = newLogs.slice(0, -1);
-        }
-        // If the last log is a narrator response, remove it and the player log that triggered it
-        // because handleCommand will re-add the player log
-        if (newLogs.length > 0 && newLogs[newLogs.length - 1].type === 'narrator') {
-          newLogs = newLogs.slice(0, -1);
-          if (newLogs.length > 0 && newLogs[newLogs.length - 1].type === 'player') {
-            newLogs = newLogs.slice(0, -1);
-          }
-        }
-        return newLogs;
-      });
-      await handleCommand(lastAction.command, lastAction.timeCost);
+      await handleCommand(lastAction.command, lastAction.timeCost, true);
     }
   }, [lastAction, isLoading, handleCommand]);
 

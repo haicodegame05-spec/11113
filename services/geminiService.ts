@@ -381,10 +381,13 @@ export const FANFIC_CORE_RULES = `
 QUY TẮC ĐỒNG NHÂN ĐỘC LẬP (INDEPENDENT FANFIC PROTOCOL):
 1. TUYỆT ĐỐI KHÔNG sử dụng bất kỳ thuật ngữ, luật lệ hay prompt nào của dự án gốc (Matrix, Vạn Giới Hồng Trần).
 2. TẬP TRUNG HOÀN TOÀN vào tác phẩm gốc đã chọn. Sử dụng đúng hệ thống sức mạnh, địa danh và danh xưng của tác phẩm đó.
-3. NHÂN VẬT: Giữ đúng tính cách nguyên tác (In-Character). Nếu là nhân vật mới, phải phù hợp với logic thế giới đó.
-4. DỮ LIỆU NHÂN VẬT: Nếu nhân vật Đồng Nhân đã có sẵn dữ liệu về Tuổi (age) hoặc Ngày sinh (birthday) trong cơ sở dữ liệu thực tại, AI BẮT BUỘC phải sử dụng các dữ liệu đó, không được tự ý thay đổi hay sáng tạo mới trừ khi có biến cố cốt truyện cực kỳ hợp lý.
-5. DẪN TRUYỆN: Viết theo phong cách tiểu thuyết, giàu hình ảnh, cảm xúc. Ưu tiên đối thoại và miêu tả cử chỉ.
-6. JSON: Luôn trả về đúng cấu trúc JSON để hệ thống xử lý, nhưng nội dung bên trong phải hoàn toàn thuộc về thế giới Đồng Nhân.
+3. TRA CỨU NGUYÊN TÁC (CANON GROUNDING): AI được phép và khuyến khích sử dụng công cụ Google Search để tra cứu các tình tiết, nhân vật, và bối cảnh chính xác từ tác phẩm gốc nếu cảm thấy thông tin hiện tại chưa đủ hoặc có nguy cơ sai lệch.
+4. CẬP NHẬT TÌNH TIẾT: Chủ động đưa vào các nhân vật phụ, địa danh hoặc các sự kiện đang diễn ra trong dòng thời gian của nguyên tác để tăng tính chân thực.
+5. NHÂN VẬT (IN-CHARACTER): Giữ đúng tính cách nguyên tác (In-Character). Tuyệt đối tránh tình trạng OOC (Out of Character). AI phải liên tục đối chiếu hành động của NPC với hình tượng của họ trong tác phẩm gốc.
+6. CHỐNG BIẾN CHẤT VÔ LÝ: Không được để các tương tác với MC làm biến chất nhân vật một cách vô lý. Sự thay đổi tâm lý phải có quá trình và biến cố đủ lớn.
+7. DỮ LIỆU NHÂN VẬT: Sử dụng dữ liệu nguyên tác về tuổi, ngày sinh, sở thích. Nếu người chơi đã thiết lập thông tin nhân vật dựa trên nguyên tác, AI phải tuân thủ 100%.
+8. DẪN TRUYỆN: Viết theo phong cách tiểu thuyết của tác phẩm gốc.
+9. JSON: Luôn trả về đúng cấu trúc JSON để hệ thống xử lý, nhưng nội dung bên trong phải hoàn toàn thuộc về thế giới Đồng Nhân.
 `;
 
 export const GENERAL_SAFE_JSON_SCHEMA = GENERAL_JSON_SCHEMA
@@ -884,6 +887,8 @@ export class GeminiGameService {
         2. Tập trung hoàn toàn vào bối cảnh tác phẩm gốc.
         3. Sử dụng hệ thống sức mạnh và thuật ngữ của tác phẩm đó.
         4. Mọi NPC phải phù hợp với thế giới đó.
+        5. CHỐNG OOC: Luôn ưu tiên tính cách nguyên tác của nhân vật hơn là các tương tác nhất thời với MC.
+        6. TRA CỨU: Nếu không chắc chắn về một tình tiết hoặc nhân vật trong nguyên tác, hãy sử dụng Google Search để xác minh trước khi viết.
         ` : ""}
 
         THÔNG TIN THỰC TẠI HIỆN TẠI (ENTITY DB):
@@ -938,6 +943,7 @@ export class GeminiGameService {
         config: {
           systemInstruction: finalPrompt,
           responseMimeType: "application/json",
+          tools: isFanfic ? [{ googleSearch: {} }] : undefined,
           temperature: settings?.temperature !== undefined ? settings.temperature : 1.0,
           thinkingConfig: isGemini3 ? (budgetToUse > 0 ? { 
             thinkingBudget: budgetToUse
